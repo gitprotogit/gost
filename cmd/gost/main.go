@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ginuerzh/gost"
+	"github.com/gitprotogit/gost"
 	"github.com/go-log/log"
 )
 
@@ -73,8 +73,9 @@ func main() {
 	gost.DefaultTLSConfig = &tls.Config{
 		Certificates: []tls.Certificate{cert},
 	}
-
+	
 	for _, route := range routes {
+		log.Log(route.ChainNodes, route.ServeNodes)
 		if err := route.serve(); err != nil {
 			log.Log(err)
 			os.Exit(1)
@@ -120,6 +121,7 @@ func (r *route) initChain() (*gost.Chain, error) {
 		if err != nil {
 			log.Log(err)
 		}
+		log.Log("peerCfg=======",peerCfg)
 		peerCfg.Validate()
 		ngroup.Options = append(ngroup.Options,
 			gost.WithFilter(&gost.FailFilter{
@@ -282,6 +284,8 @@ func parseChainNode(ns string) (nodes []gost.Node, err error) {
 	node.DialOptions = append(node.DialOptions,
 		gost.TimeoutDialOption(time.Duration(timeout)*time.Second),
 	)
+	
+	log.Log("timeout=========",timeout)
 
 	handshakeOptions := []gost.HandshakeOption{
 		gost.AddrHandshakeOption(node.Addr),
@@ -298,6 +302,7 @@ func parseChainNode(ns string) (nodes []gost.Node, err error) {
 	}
 
 	ips := parseIP(node.Get("ip"), sport)
+	log.Log("ips=========",ips)
 	for _, ip := range ips {
 		node.Addr = ip
 		node.HandshakeOptions = append(handshakeOptions, gost.AddrHandshakeOption(ip))
@@ -317,8 +322,11 @@ func (r *route) serve() error {
 		return err
 	}
 
+	log.Log(chain.LastNode())
+	
 	for _, ns := range r.ServeNodes {
 		node, err := gost.ParseNode(ns)
+		log.Log(node.Client, node.Host, "node.Remote",node.Remote,node.Protocol,node.Transport)
 		if err != nil {
 			return err
 		}
@@ -398,6 +406,7 @@ func (r *route) serve() error {
 				chain.Nodes()[len(chain.Nodes())-1].Client.Transporter = gost.SSHForwardTransporter()
 			}
 			ln, err = gost.TCPListener(node.Addr)
+			log.Log("tcp err----",err)
 		case "rtcp":
 			// Directly use SSH port forwarding if the last chain node is forward+ssh
 			if chain.LastNode().Protocol == "forward" && chain.LastNode().Transport == "ssh" {
@@ -424,6 +433,8 @@ func (r *route) serve() error {
 		if err != nil {
 			return err
 		}
+		
+		log.Log(ln.Addr().String(),ln.Addr().Network())
 
 		var whitelist, blacklist *gost.Permissions
 		if node.Values.Get("whitelist") != "" {
@@ -437,8 +448,8 @@ func (r *route) serve() error {
 			}
 		}
 
+		log.Log(node.Protocol, "chain====",chain.LastNode().Protocol)
 		var handlerOptions []gost.HandlerOption
-
 		handlerOptions = append(handlerOptions,
 			gost.AddrHandlerOption(node.Addr),
 			gost.ChainHandlerOption(chain),
