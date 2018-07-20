@@ -120,10 +120,10 @@
 // https://spec.torproject.org/pt-spec
 //
 // Extended ORPort:
-// https://gitweb.torproject.org/torspec.git/tree/proposals/196-transport-control-ports.txt
+// https://gitweb.torproject.org/torspec.git/tree/proposals/196-transport-control-ports.txt.
 //
 // Extended ORPort Authentication:
-// https://gitweb.torproject.org/torspec.git/tree/proposals/217-ext-orport-auth.txt
+// https://gitweb.torproject.org/torspec.git/tree/proposals/217-ext-orport-auth.txt.
 //
 // Pluggable Transport through SOCKS proxy:
 // https://gitweb.torproject.org/torspec.git/tree/proposals/232-pluggable-transports-through-proxy.txt
@@ -217,18 +217,19 @@ func getenvRequired(key string) (string, error) {
 // <KeywordChar> ::= <any US-ASCII alphanumeric, dash, and underscore>
 func keywordIsSafe(keyword string) bool {
 	for _, b := range []byte(keyword) {
-		switch {
-		case '0' <= b && b <= '9':
+		if b >= '0' && b <= '9' {
 			continue
-		case 'A' <= b && b <= 'Z':
-			continue
-		case 'a' <= b && b <= 'z':
-			continue
-		case b == '-' || b == '_':
-			continue
-		default:
-			return false
 		}
+		if b >= 'A' && b <= 'Z' {
+			continue
+		}
+		if b >= 'a' && b <= 'z' {
+			continue
+		}
+		if b == '-' || b == '_' {
+			continue
+		}
+		return false
 	}
 	return true
 }
@@ -448,7 +449,7 @@ type ClientInfo struct {
 // was a list of transport names to use in case Tor requested "*". That feature
 // was never implemented and has been removed from the pluggable transports
 // specification.
-// https://bugs.torproject.org/15612
+// https://trac.torproject.org/projects/tor/ticket/15612
 func ClientSetup(_ []string) (info ClientInfo, err error) {
 	ver, err := getManagedTransportVer()
 	if err != nil {
@@ -493,7 +494,6 @@ func resolveAddr(addrStr string) (*net.TCPAddr, error) {
 		// Before the fixing of bug #7011, tor doesn't put brackets around IPv6
 		// addresses. Split after the last colon, assuming it is a port
 		// separator, and try adding the brackets.
-		// https://bugs.torproject.org/7011
 		parts := strings.Split(addrStr, ":")
 		if len(parts) <= 2 {
 			return nil, err
@@ -615,7 +615,7 @@ func readAuthCookie(f io.Reader) ([]byte, error) {
 }
 
 // Read and validate the contents of an auth cookie file. Returns the 32-byte
-// cookie. See section 4.2.1.2 of 217-ext-orport-auth.txt.
+// cookie. See section 4.2.1.2 of pt-spec.txt.
 func readAuthCookieFile(filename string) ([]byte, error) {
 	f, err := os.Open(filename)
 	if err != nil {
@@ -654,7 +654,7 @@ type ServerInfo struct {
 // was a list of transport names to use in case Tor requested "*". That feature
 // was never implemented and has been removed from the pluggable transports
 // specification.
-// https://bugs.torproject.org/15612
+// https://trac.torproject.org/projects/tor/ticket/15612
 func ServerSetup(_ []string) (info ServerInfo, err error) {
 	ver, err := getManagedTransportVer()
 	if err != nil {
@@ -773,7 +773,6 @@ func extOrPortAuthenticate(s io.ReadWriter, info *ServerInfo) error {
 	// Work around tor bug #15240 where the auth cookie is generated after
 	// pluggable transports are launched, leading to a stale cookie getting
 	// cached forever if it is only read once as part of ServerSetup.
-	// https://bugs.torproject.org/15240
 	authCookie, err := readAuthCookieFile(info.AuthCookiePath)
 	if err != nil {
 		return fmt.Errorf("error reading TOR_PT_AUTH_COOKIE_FILE %q: %s", info.AuthCookiePath, err.Error())
@@ -802,7 +801,7 @@ func extOrPortAuthenticate(s io.ReadWriter, info *ServerInfo) error {
 	return nil
 }
 
-// See section 3.1.1 of 196-transport-control-ports.txt.
+// See section 3.1 of 196-transport-control-ports.txt.
 const (
 	extOrCmdDone      = 0x0000
 	extOrCmdUserAddr  = 0x0001

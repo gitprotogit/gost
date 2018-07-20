@@ -45,27 +45,27 @@ func ServerConn(conn net.Conn, selector Selector) *Conn {
 func (conn *Conn) Handleshake() error {
 	conn.handshakeMutex.Lock()
 	defer conn.handshakeMutex.Unlock()
-
+	
 	if err := conn.handshakeErr; err != nil {
 		return err
 	}
 	if conn.handshaked {
 		return nil
 	}
-
+	
 	if conn.isClient {
 		conn.handshakeErr = conn.clientHandshake()
 	} else {
 		conn.handshakeErr = conn.serverHandshake()
 	}
-
+	
 	return conn.handshakeErr
 }
 
 func (conn *Conn) clientHandshake() error {
 	var methods []uint8
 	var nm int
-
+	
 	if conn.selector != nil {
 		methods = conn.selector.Methods()
 	}
@@ -73,24 +73,24 @@ func (conn *Conn) clientHandshake() error {
 	if nm == 0 {
 		nm = 1
 	}
-
+	
 	b := make([]byte, 2+nm)
 	b[0] = Ver5
 	b[1] = uint8(nm)
 	copy(b[2:], methods)
-
+	
 	if _, err := conn.c.Write(b); err != nil {
 		return err
 	}
-
+	
 	if _, err := io.ReadFull(conn.c, b[:2]); err != nil {
 		return err
 	}
-
+	
 	if b[0] != Ver5 {
 		return ErrBadVersion
 	}
-
+	
 	if conn.selector != nil {
 		c, err := conn.selector.OnSelected(b[1], conn.c)
 		if err != nil {
@@ -109,16 +109,16 @@ func (conn *Conn) serverHandshake() error {
 	if err != nil {
 		return err
 	}
-
+	
 	method := MethodNoAuth
 	if conn.selector != nil {
 		method = conn.selector.Select(methods...)
 	}
-
+	
 	if _, err := conn.c.Write([]byte{Ver5, method}); err != nil {
 		return err
 	}
-
+	
 	if conn.selector != nil {
 		c, err := conn.selector.OnSelected(method, conn.c)
 		if err != nil {

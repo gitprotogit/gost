@@ -3,10 +3,10 @@ gost - GO Simple Tunnel
 
 ### GO语言实现的安全隧道
 
-[![GoDoc](https://godoc.org/github.com/ginuerzh/gost?status.svg)](https://godoc.org/github.com/ginuerzh/gost)
+[![GoDoc](https://godoc.org/github.com/gitprotogit/gost?status.svg)](https://godoc.org/github.com/gitprotogit/gost)
 [![Build Status](https://travis-ci.org/ginuerzh/gost.svg?branch=master)](https://travis-ci.org/ginuerzh/gost)
-[![Go Report Card](https://goreportcard.com/badge/github.com/ginuerzh/gost)](https://goreportcard.com/report/github.com/ginuerzh/gost)
-[![GitHub release](https://img.shields.io/github/release/ginuerzh/gost.svg)](https://github.com/ginuerzh/gost/releases/latest)
+[![Go Report Card](https://goreportcard.com/badge/github.com/gitprotogit/gost)](https://goreportcard.com/report/github.com/gitprotogit/gost)
+[![GitHub release](https://img.shields.io/github/release/ginuerzh/gost.svg)](https://github.com/gitprotogit/gost/releases/latest)
 [![Snap Status](https://build.snapcraft.io/badge/ginuerzh/gost.svg)](https://build.snapcraft.io/user/ginuerzh/gost)
  
 [English README](README_en.md)
@@ -36,12 +36,12 @@ Google讨论组: <https://groups.google.com/d/forum/go-gost>
 
 #### 二进制文件
 
-<https://github.com/ginuerzh/gost/releases>
+<https://github.com/gitprotogit/gost/releases>
 
 #### 源码编译
 
 ```bash
-go get -u github.com/ginuerzh/gost/cmd/gost
+go get -u github.com/gitprotogit/gost/cmd/gost
 ```
 
 #### Docker

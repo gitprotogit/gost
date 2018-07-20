@@ -68,27 +68,28 @@ func ShadowConnector(cipher *url.Userinfo) Connector {
 }
 
 func (c *shadowConnector) Connect(conn net.Conn, addr string) (net.Conn, error) {
-	rawaddr, err := ss.RawAddr(addr)
-	if err != nil {
-		return nil, err
-	}
-
-	var method, password string
-	if c.Cipher != nil {
-		method = c.Cipher.Username()
-		password, _ = c.Cipher.Password()
-	}
-
-	cipher, err := ss.NewCipher(method, password)
-	if err != nil {
-		return nil, err
-	}
-
-	sc, err := ss.DialWithRawAddrConn(rawaddr, conn, cipher)
-	if err != nil {
-		return nil, err
-	}
-	return &shadowConn{conn: sc}, nil
+	//rawaddr, err := ss.RawAddr(addr)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//
+	//var method, password string
+	//if c.Cipher != nil {
+	//	method = c.Cipher.Username()
+	//	password, _ = c.Cipher.Password()
+	//}
+	//
+	//cipher, err := ss.NewCipher(method, password)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//
+	////sc, err := ss.DialWithRawAddr(rawaddr, conn, cipher)
+	////if err != nil {
+	////	return nil, err
+	////}
+	////return &shadowConn{conn: sc}, nil
+	return nil,nil
 }
 
 type shadowHandler struct {

@@ -1,0 +1,32 @@
+package: github.com/gitprotogit/gost
+import:
+- package: git.torproject.org/pluggable-transports/goptlib.git
+- package: git.torproject.org/pluggable-transports/obfs4.git
+  subpackages:
+  - transports/base
+  - transports/obfs4
+- package: github.com/eclipse/paho.mqtt.golang
+- package: github.com/ginuerzh/gosocks4
+- package: github.com/ginuerzh/gosocks5
+- package: github.com/ginuerzh/tls-dissector
+- package: github.com/go-log/log
+- package: github.com/json-iterator/go
+- package: github.com/klauspost/compress
+  subpackages:
+  - snappy
+- package: github.com/lucas-clemente/quic-go
+- package: github.com/parnurzeal/gorequest
+- package: github.com/ryanuber/go-glob
+- package: github.com/shadowsocks/shadowsocks-go
+  subpackages:
+  - shadowsocks
+- package: golang.org/x/crypto
+  subpackages:
+  - pbkdf2
+  - ssh
+- package: golang.org/x/net
+  subpackages:
+  - http2
+- package: gopkg.in/gorilla/websocket.v1
+- package: gopkg.in/xtaci/kcp-go.v2
+- package: gopkg.in/xtaci/smux.v1

@@ -1,8 +1,8 @@
 FROM golang:alpine as builder
 
-ADD . /go/src/github.com/ginuerzh/gost/
+ADD . /go/src/github.com/gitprotogit/gost/
 
-RUN go install github.com/ginuerzh/gost/cmd/gost
+RUN go install github.com/gitprotogit/gost/cmd/gost
 
 FROM alpine:latest
 

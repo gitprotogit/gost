@@ -28,3 +28,5 @@ _testmain.go
 
 cmd/gost
 snap
+.idea
+.DS_Store

@@ -12,35 +12,37 @@ const (
 	fecHeaderSizePlus2 = fecHeaderSize + 2 // plus 2B data size
 	typeData           = 0xf1
 	typeFEC            = 0xf2
-	fecExpire          = 30000 // 30s
 )
 
 type (
-	// FEC defines forward error correction for packets
-	FEC struct {
-		rx           []fecPacket // ordered receive queue
-		rxlimit      int         // queue size limit
-		dataShards   int
-		parityShards int
-		shardSize    int
-		next         uint32 // next seqid
-		enc          reedsolomon.Encoder
-		shards       [][]byte
-		shards2      [][]byte // for calcECC
-		shardsflag   []bool
-		paws         uint32 // Protect Against Wrapped Sequence numbers
-		lastCheck    uint32
-	}
-
+	// fecPacket is a decoded FEC packet
 	fecPacket struct {
 		seqid uint32
 		flag  uint16
 		data  []byte
-		ts    uint32
+	}
+
+	// fecDecoder for decoding incoming packets
+	fecDecoder struct {
+		rxlimit      int // queue size limit
+		dataShards   int
+		parityShards int
+		shardSize    int
+		rx           []fecPacket // ordered receive queue
+
+		// caches
+		decodeCache [][]byte
+		flagCache   []bool
+
+		// zeros
+		zeros []byte
+
+		// RS decoder
+		codec reedsolomon.Encoder
 	}
 )
 
-func newFEC(rxlimit, dataShards, parityShards int) *FEC {
+func newFECDecoder(rxlimit, dataShards, parityShards int) *fecDecoder {
 	if dataShards <= 0 || parityShards <= 0 {
 		return nil
 	}
@@ -48,29 +50,27 @@ func newFEC(rxlimit, dataShards, parityShards int) *FEC {
 		return nil
 	}
 
-	fec := new(FEC)
-	fec.rxlimit = rxlimit
-	fec.dataShards = dataShards
-	fec.parityShards = parityShards
-	fec.shardSize = dataShards + parityShards
-	fec.paws = (0xffffffff/uint32(fec.shardSize) - 1) * uint32(fec.shardSize)
-	enc, err := reedsolomon.New(dataShards, parityShards)
+	dec := new(fecDecoder)
+	dec.rxlimit = rxlimit
+	dec.dataShards = dataShards
+	dec.parityShards = parityShards
+	dec.shardSize = dataShards + parityShards
+	codec, err := reedsolomon.New(dataShards, parityShards)
 	if err != nil {
 		return nil
 	}
-	fec.enc = enc
-	fec.shards = make([][]byte, fec.shardSize)
-	fec.shards2 = make([][]byte, fec.shardSize)
-	fec.shardsflag = make([]bool, fec.shardSize)
-	return fec
+	dec.codec = codec
+	dec.decodeCache = make([][]byte, dec.shardSize)
+	dec.flagCache = make([]bool, dec.shardSize)
+	dec.zeros = make([]byte, mtuLimit)
+	return dec
 }
 
-// decode a fec packet
-func (fec *FEC) decode(data []byte) fecPacket {
+// decodeBytes a fec packet
+func (dec *fecDecoder) decodeBytes(data []byte) fecPacket {
 	var pkt fecPacket
 	pkt.seqid = binary.LittleEndian.Uint32(data)
 	pkt.flag = binary.LittleEndian.Uint16(data[4:])
-	pkt.ts = currentMs()
 	// allocate memory & copy
 	buf := xmitBuf.Get().([]byte)[:len(data)-6]
 	copy(buf, data[6:])
@@ -78,46 +78,16 @@ func (fec *FEC) decode(data []byte) fecPacket {
 	return pkt
 }
 
-func (fec *FEC) markData(data []byte) {
-	binary.LittleEndian.PutUint32(data, fec.next)
-	binary.LittleEndian.PutUint16(data[4:], typeData)
-	fec.next++
-}
-
-func (fec *FEC) markFEC(data []byte) {
-	binary.LittleEndian.PutUint32(data, fec.next)
-	binary.LittleEndian.PutUint16(data[4:], typeFEC)
-	fec.next++
-	if fec.next >= fec.paws { // paws would only occurs in markFEC
-		fec.next = 0
-	}
-}
-
-// input a fec packet
-func (fec *FEC) input(pkt fecPacket) (recovered [][]byte) {
-	// expiration
-	now := currentMs()
-	if now-fec.lastCheck >= fecExpire {
-		var rx []fecPacket
-		for k := range fec.rx {
-			if now-fec.rx[k].ts < fecExpire {
-				rx = append(rx, fec.rx[k])
-			} else {
-				xmitBuf.Put(fec.rx[k].data)
-			}
-		}
-		fec.rx = rx
-		fec.lastCheck = now
-	}
-
+// decode a fec packet
+func (dec *fecDecoder) decode(pkt fecPacket) (recovered [][]byte) {
 	// insertion
-	n := len(fec.rx) - 1
+	n := len(dec.rx) - 1
 	insertIdx := 0
 	for i := n; i >= 0; i-- {
-		if pkt.seqid == fec.rx[i].seqid { // de-duplicate
+		if pkt.seqid == dec.rx[i].seqid { // de-duplicate
 			xmitBuf.Put(pkt.data)
 			return nil
-		} else if pkt.seqid > fec.rx[i].seqid { // insertion
+		} else if _itimediff(pkt.seqid, dec.rx[i].seqid) > 0 { // insertion
 			insertIdx = i + 1
 			break
 		}
@@ -125,118 +95,217 @@ func (fec *FEC) input(pkt fecPacket) (recovered [][]byte) {
 
 	// insert into ordered rx queue
 	if insertIdx == n+1 {
-		fec.rx = append(fec.rx, pkt)
+		dec.rx = append(dec.rx, pkt)
 	} else {
-		fec.rx = append(fec.rx, fecPacket{})
-		copy(fec.rx[insertIdx+1:], fec.rx[insertIdx:])
-		fec.rx[insertIdx] = pkt
+		dec.rx = append(dec.rx, fecPacket{})
+		copy(dec.rx[insertIdx+1:], dec.rx[insertIdx:]) // shift right
+		dec.rx[insertIdx] = pkt
 	}
 
 	// shard range for current packet
-	shardBegin := pkt.seqid - pkt.seqid%uint32(fec.shardSize)
-	shardEnd := shardBegin + uint32(fec.shardSize) - 1
+	shardBegin := pkt.seqid - pkt.seqid%uint32(dec.shardSize)
+	shardEnd := shardBegin + uint32(dec.shardSize) - 1
 
 	// max search range in ordered queue for current shard
-	searchBegin := insertIdx - int(pkt.seqid%uint32(fec.shardSize))
+	searchBegin := insertIdx - int(pkt.seqid%uint32(dec.shardSize))
 	if searchBegin < 0 {
 		searchBegin = 0
 	}
-	searchEnd := searchBegin + fec.shardSize - 1
-	if searchEnd >= len(fec.rx) {
-		searchEnd = len(fec.rx) - 1
+	searchEnd := searchBegin + dec.shardSize - 1
+	if searchEnd >= len(dec.rx) {
+		searchEnd = len(dec.rx) - 1
 	}
 
-	if searchEnd > searchBegin && searchEnd-searchBegin+1 >= fec.dataShards {
-		numshard := 0
-		numDataShard := 0
-		first := -1
-		maxlen := 0
-		shards := fec.shards
-		shardsflag := fec.shardsflag
-		for k := range fec.shards {
+	// re-construct datashards
+	if searchEnd-searchBegin+1 >= dec.dataShards {
+		var numshard, numDataShard, first, maxlen int
+
+		// zero cache
+		shards := dec.decodeCache
+		shardsflag := dec.flagCache
+		for k := range dec.decodeCache {
 			shards[k] = nil
 			shardsflag[k] = false
 		}
 
+		// shard assembly
 		for i := searchBegin; i <= searchEnd; i++ {
-			seqid := fec.rx[i].seqid
-			if seqid > shardEnd {
+			seqid := dec.rx[i].seqid
+			if _itimediff(seqid, shardEnd) > 0 {
 				break
-			} else if seqid >= shardBegin {
-				shards[seqid%uint32(fec.shardSize)] = fec.rx[i].data
-				shardsflag[seqid%uint32(fec.shardSize)] = true
+			} else if _itimediff(seqid, shardBegin) >= 0 {
+				shards[seqid%uint32(dec.shardSize)] = dec.rx[i].data
+				shardsflag[seqid%uint32(dec.shardSize)] = true
 				numshard++
-				if fec.rx[i].flag == typeData {
+				if dec.rx[i].flag == typeData {
 					numDataShard++
 				}
 				if numshard == 1 {
 					first = i
 				}
-				if len(fec.rx[i].data) > maxlen {
-					maxlen = len(fec.rx[i].data)
+				if len(dec.rx[i].data) > maxlen {
+					maxlen = len(dec.rx[i].data)
 				}
 			}
 		}
 
-		if numDataShard == fec.dataShards { // no lost
-			for i := first; i < first+numshard; i++ { // free
-				xmitBuf.Put(fec.rx[i].data)
-			}
-			copy(fec.rx[first:], fec.rx[first+numshard:])
-			for i := 0; i < numshard; i++ { // dereference
-				fec.rx[len(fec.rx)-1-i] = fecPacket{}
-			}
-			fec.rx = fec.rx[:len(fec.rx)-numshard]
-		} else if numshard >= fec.dataShards { // recoverable
+		if numDataShard == dec.dataShards {
+			// case 1:  no lost data shards
+			dec.rx = dec.freeRange(first, numshard, dec.rx)
+		} else if numshard >= dec.dataShards {
+			// case 2: data shard lost, but  recoverable from parity shard
 			for k := range shards {
 				if shards[k] != nil {
 					dlen := len(shards[k])
 					shards[k] = shards[k][:maxlen]
-					xorBytes(shards[k][dlen:], shards[k][dlen:], shards[k][dlen:])
+					copy(shards[k][dlen:], dec.zeros)
 				}
 			}
-			if err := fec.enc.Reconstruct(shards); err == nil {
-				for k := range shards[:fec.dataShards] {
+			if err := dec.codec.ReconstructData(shards); err == nil {
+				for k := range shards[:dec.dataShards] {
 					if !shardsflag[k] {
 						recovered = append(recovered, shards[k])
 					}
 				}
 			}
-
-			for i := first; i < first+numshard; i++ { // free
-				xmitBuf.Put(fec.rx[i].data)
-			}
-			copy(fec.rx[first:], fec.rx[first+numshard:])
-			for i := 0; i < numshard; i++ { // dereference
-				fec.rx[len(fec.rx)-1-i] = fecPacket{}
-			}
-			fec.rx = fec.rx[:len(fec.rx)-numshard]
+			dec.rx = dec.freeRange(first, numshard, dec.rx)
 		}
 	}
 
 	// keep rxlimit
-	if len(fec.rx) > fec.rxlimit {
-		if fec.rx[0].flag == typeData { // record unrecoverable data
+	if len(dec.rx) > dec.rxlimit {
+		if dec.rx[0].flag == typeData { // record unrecoverable data
 			atomic.AddUint64(&DefaultSnmp.FECShortShards, 1)
 		}
-		xmitBuf.Put(fec.rx[0].data) // free
-		fec.rx[0].data = nil
-		fec.rx = fec.rx[1:]
+		dec.rx = dec.freeRange(0, 1, dec.rx)
 	}
 	return
 }
 
-func (fec *FEC) calcECC(data [][]byte, offset, maxlen int) (ecc [][]byte) {
-	if len(data) != fec.shardSize {
+// free a range of fecPacket, and zero for GC recycling
+func (dec *fecDecoder) freeRange(first, n int, q []fecPacket) []fecPacket {
+	for i := first; i < first+n; i++ { // free
+		xmitBuf.Put(q[i].data)
+	}
+	copy(q[first:], q[first+n:])
+	for i := 0; i < n; i++ { // dereference data
+		q[len(q)-1-i].data = nil
+	}
+	return q[:len(q)-n]
+}
+
+type (
+	// fecEncoder for encoding outgoing packets
+	fecEncoder struct {
+		dataShards   int
+		parityShards int
+		shardSize    int
+		paws         uint32 // Protect Against Wrapped Sequence numbers
+		next         uint32 // next seqid
+
+		shardCount int // count the number of datashards collected
+		maxSize    int // record maximum data length in datashard
+
+		headerOffset  int // FEC header offset
+		payloadOffset int // FEC payload offset
+
+		// caches
+		shardCache  [][]byte
+		encodeCache [][]byte
+
+		// zeros
+		zeros []byte
+
+		// RS encoder
+		codec reedsolomon.Encoder
+	}
+)
+
+func newFECEncoder(dataShards, parityShards, offset int) *fecEncoder {
+	if dataShards <= 0 || parityShards <= 0 {
 		return nil
 	}
-	shards := fec.shards2
-	for k := range shards {
-		shards[k] = data[k][offset:maxlen]
+	enc := new(fecEncoder)
+	enc.dataShards = dataShards
+	enc.parityShards = parityShards
+	enc.shardSize = dataShards + parityShards
+	enc.paws = (0xffffffff/uint32(enc.shardSize) - 1) * uint32(enc.shardSize)
+	enc.headerOffset = offset
+	enc.payloadOffset = enc.headerOffset + fecHeaderSize
+
+	codec, err := reedsolomon.New(dataShards, parityShards)
+	if err != nil {
+		return nil
+	}
+	enc.codec = codec
+
+	// caches
+	enc.encodeCache = make([][]byte, enc.shardSize)
+	enc.shardCache = make([][]byte, enc.shardSize)
+	for k := range enc.shardCache {
+		enc.shardCache[k] = make([]byte, mtuLimit)
+	}
+	enc.zeros = make([]byte, mtuLimit)
+	return enc
+}
+
+// encode the packet, output parity shards if we have enough datashards
+// the content of returned parityshards will change in next encode
+func (enc *fecEncoder) encode(b []byte) (ps [][]byte) {
+	enc.markData(b[enc.headerOffset:])
+	binary.LittleEndian.PutUint16(b[enc.payloadOffset:], uint16(len(b[enc.payloadOffset:])))
+
+	// copy data to fec datashards
+	sz := len(b)
+	enc.shardCache[enc.shardCount] = enc.shardCache[enc.shardCount][:sz]
+	copy(enc.shardCache[enc.shardCount], b)
+	enc.shardCount++
+
+	// record max datashard length
+	if sz > enc.maxSize {
+		enc.maxSize = sz
 	}
 
-	if err := fec.enc.Encode(shards); err != nil {
-		return nil
+	//  calculate Reed-Solomon Erasure Code
+	if enc.shardCount == enc.dataShards {
+		// bzero each datashard's tail
+		for i := 0; i < enc.dataShards; i++ {
+			shard := enc.shardCache[i]
+			slen := len(shard)
+			copy(shard[slen:enc.maxSize], enc.zeros)
+		}
+
+		// construct equal-sized slice with stripped header
+		cache := enc.encodeCache
+		for k := range cache {
+			cache[k] = enc.shardCache[k][enc.payloadOffset:enc.maxSize]
+		}
+
+		// rs encode
+		if err := enc.codec.Encode(cache); err == nil {
+			ps = enc.shardCache[enc.dataShards:]
+			for k := range ps {
+				enc.markFEC(ps[k][enc.headerOffset:])
+				ps[k] = ps[k][:enc.maxSize]
+			}
+		}
+
+		// reset counters to zero
+		enc.shardCount = 0
+		enc.maxSize = 0
 	}
-	return data[fec.dataShards:]
+
+	return
+}
+
+func (enc *fecEncoder) markData(data []byte) {
+	binary.LittleEndian.PutUint32(data, enc.next)
+	binary.LittleEndian.PutUint16(data[4:], typeData)
+	enc.next++
+}
+
+func (enc *fecEncoder) markFEC(data []byte) {
+	binary.LittleEndian.PutUint32(data, enc.next)
+	binary.LittleEndian.PutUint16(data[4:], typeFEC)
+	enc.next = (enc.next + 1) % enc.paws
 }

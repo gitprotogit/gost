@@ -3,10 +3,10 @@ gost - GO Simple Tunnel
  
 ### A simple security tunnel written in Golang
 
-[![GoDoc](https://godoc.org/github.com/ginuerzh/gost?status.svg)](https://godoc.org/github.com/ginuerzh/gost)
+[![GoDoc](https://godoc.org/github.com/gitprotogit/gost?status.svg)](https://godoc.org/github.com/gitprotogit/gost)
 [![Build Status](https://travis-ci.org/ginuerzh/gost.svg?branch=master)](https://travis-ci.org/ginuerzh/gost)
-[![Go Report Card](https://goreportcard.com/badge/github.com/ginuerzh/gost)](https://goreportcard.com/report/github.com/ginuerzh/gost)
-[![GitHub release](https://img.shields.io/github/release/ginuerzh/gost.svg)](https://github.com/ginuerzh/gost/releases/latest)
+[![Go Report Card](https://goreportcard.com/badge/github.com/gitprotogit/gost)](https://goreportcard.com/report/github.com/gitprotogit/gost)
+[![GitHub release](https://img.shields.io/github/release/ginuerzh/gost.svg)](https://github.com/gitprotogit/gost/releases/latest)
 [![Snap Status](https://build.snapcraft.io/badge/ginuerzh/gost.svg)](https://build.snapcraft.io/user/ginuerzh/gost)
 
 Features
@@ -34,12 +34,12 @@ Installation
 
 #### Binary files
 
-<https://github.com/ginuerzh/gost/releases>
+<https://github.com/gitprotogit/gost/releases>
 
 #### From source
 
 ```bash
-go get -u github.com/ginuerzh/gost/cmd/gost
+go get -u github.com/gitprotogit/gost/cmd/gost
 ```
 
 #### Docker

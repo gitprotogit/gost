@@ -21,6 +21,6 @@ parts:
     source-type: git
     source-branch: master
     plugin: go
-    go-packages: [github.com/ginuerzh/gost/cmd/gost]
-    go-importpath: github.com/ginuerzh/gost
+    go-packages: [github.com/gitprotogit/gost/cmd/gost]
+    go-importpath: github.com/gitprotogit/gost
   

@@ -177,7 +177,7 @@ func (tr *kcpTransporter) initSession(addr string, conn net.Conn, config *KCPCon
 	kcpconn, err := kcp.NewConn(addr,
 		blockCrypt(config.Key, config.Crypt, KCPSalt),
 		config.DataShard, config.ParityShard,
-		&kcp.ConnectedUDPConn{UDPConn: udpConn, Conn: udpConn})
+		&kcp.ConnectedUDPConn{UDPConn: udpConn})
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +187,7 @@ func (tr *kcpTransporter) initSession(addr string, conn net.Conn, config *KCPCon
 	kcpconn.SetWindowSize(config.SndWnd, config.RcvWnd)
 	kcpconn.SetMtu(config.MTU)
 	kcpconn.SetACKNoDelay(config.AckNodelay)
-	kcpconn.SetKeepAlive(config.KeepAlive)
+	//kcpconn.SetKeepAlive(config.KeepAlive)
 
 	// if err := kcpconn.SetDSCP(config.DSCP); err != nil {
 	// 	log.Log("[kcp]", err)
@@ -276,7 +276,7 @@ func (l *kcpListener) listenLoop() {
 		conn.SetMtu(l.config.MTU)
 		conn.SetWindowSize(l.config.SndWnd, l.config.RcvWnd)
 		conn.SetACKNoDelay(l.config.AckNodelay)
-		conn.SetKeepAlive(l.config.KeepAlive)
+		//conn.SetKeepAlive(l.config.KeepAlive)
 		go l.mux(conn)
 	}
 }
